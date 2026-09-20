@@ -234,3 +234,6 @@ sandbox/
 *.pid
 *.seed
 *.pid.lock
+
+# sound-change engine test temp bundle
+frontend/.test-bundle.mjs
