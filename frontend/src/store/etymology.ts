@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { COGNATE_SETS, LANGUAGE_FAMILIES, buildGraph } from '../mock/data'
-export { LANGUAGE_FAMILIES, COGNATE_SETS }
+import { SOUND_CHANGE_RULES, VERIFIED_CONCLUSIONS, deriveSoundChange } from '../mock/soundchange'
+import type { DerivationResult } from '../types'
+export { LANGUAGE_FAMILIES, COGNATE_SETS, SOUND_CHANGE_RULES, VERIFIED_CONCLUSIONS }
 
 export const useEtymologyStore = defineStore('etymology', () => {
   const graph = ref(buildGraph())
@@ -18,5 +20,36 @@ export const useEtymologyStore = defineStore('etymology', () => {
     })
   )
 
-  return { graph, selectedNode, searchQuery, selectedFamily, filteredCognates }
+  // 音变规则推演
+  const derivationFamily = ref('ie')
+  const selectedRuleId = ref('')
+  const wordInput = ref('')
+  const derivationResult = ref<DerivationResult | null>(null)
+
+  const currentRule = computed(() => SOUND_CHANGE_RULES.find(r => r.id === selectedRuleId.value) || null)
+
+  // 切换语系时重置推演状态，各语系规则分别校验
+  watch(derivationFamily, () => {
+    selectedRuleId.value = ''
+    wordInput.value = ''
+    derivationResult.value = null
+  })
+
+  function runDerivation() {
+    derivationResult.value = deriveSoundChange(selectedRuleId.value, derivationFamily.value, wordInput.value)
+  }
+
+  async function loadVerified(v: { ruleId: string; proto: string }) {
+    derivationFamily.value = 'ie'
+    await nextTick() // 等待语系切换的重置 watcher 执行完毕
+    selectedRuleId.value = v.ruleId
+    wordInput.value = v.proto
+    runDerivation()
+  }
+
+  return {
+    graph, selectedNode, searchQuery, selectedFamily, filteredCognates,
+    derivationFamily, selectedRuleId, wordInput, derivationResult, currentRule,
+    runDerivation, loadVerified,
+  }
 })

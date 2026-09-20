@@ -80,6 +80,91 @@
           </table>
         </div>
       </div>
+      <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-400">音变规则推演</h3>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-slate-500">校验语系</span>
+            <select v-model="store.derivationFamily" class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-slate-300">
+              <option v-for="f in LANGUAGE_FAMILIES" :key="f.id" :value="f.id">{{ f.name }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 mb-3 text-xs flex-wrap">
+          <span class="text-slate-500">已验证对照结论：</span>
+          <button v-for="v in VERIFIED_CONCLUSIONS" :key="v.ruleId" @click="store.loadVerified(v)"
+            class="bg-slate-900 border border-slate-600 rounded px-2 py-1 font-mono text-cyan-300 hover:border-cyan-500">
+            {{ v.proto }} → {{ v.modern }}<span class="text-slate-500 ml-1">{{ v.label }}</span>
+          </button>
+        </div>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-slate-500 block mb-1">音变规则（按语系分别校验）</label>
+              <select v-model="store.selectedRuleId" class="w-full bg-slate-900 border border-slate-600 rounded px-2 py-1.5 text-sm text-slate-300">
+                <option value="">— 选择规则 —</option>
+                <optgroup v-for="f in LANGUAGE_FAMILIES" :key="f.id" :label="f.name">
+                  <option v-for="r in SOUND_CHANGE_RULES.filter(r => r.family === f.id)" :key="r.id" :value="r.id">{{ r.name }}</option>
+                </optgroup>
+              </select>
+            </div>
+            <div v-if="store.currentRule" class="bg-slate-900 rounded p-2 text-xs space-y-1 border border-slate-700">
+              <div><span class="text-slate-500">定律：</span>{{ store.currentRule.law }}</div>
+              <div><span class="text-slate-500">适用条件：</span>{{ store.currentRule.condition }}</div>
+              <div><span class="text-slate-500">例外边界：</span>{{ store.currentRule.exception }}</div>
+            </div>
+            <div>
+              <label class="text-xs text-slate-500 block mb-1">示例词（可点选或自行输入原始形式）</label>
+              <div v-if="store.currentRule" class="flex gap-2 mb-2 flex-wrap">
+                <button v-for="e in store.currentRule.examples" :key="e.proto" @click="store.wordInput = e.proto"
+                  class="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-green-300 hover:border-green-500">
+                  *{{ e.proto }}
+                </button>
+              </div>
+              <div class="flex gap-2">
+                <input v-model="store.wordInput" @keyup.enter="store.runDerivation()" placeholder="输入原始形式，如 pater"
+                  class="flex-1 bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-cyan-500" />
+                <button @click="store.runDerivation()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded px-4 py-1.5">开始推演</button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div v-if="store.derivationResult">
+              <div v-if="store.derivationResult.status === 'failed'" class="bg-red-900/30 border border-red-700 rounded p-3">
+                <div class="text-red-400 font-bold text-sm">推演终止 · 停止条件：{{ store.derivationResult.stopCondition }}</div>
+                <div class="text-xs text-red-300 mt-1">{{ store.derivationResult.failureReason }}</div>
+              </div>
+              <div v-else>
+                <div v-if="store.derivationResult.status === 'unverified'"
+                  class="bg-amber-900/30 border border-amber-700 rounded px-3 py-2 text-xs text-amber-300 mb-2">
+                  未达判定阈值：最终形式为机械推导的假设形式，不输出定论
+                </div>
+                <div v-else class="bg-green-900/30 border border-green-700 rounded px-3 py-2 text-xs text-green-300 mb-2">
+                  已验证对照结论：推导链完整，文献佐证充分
+                </div>
+                <ol class="space-y-2">
+                  <li v-for="s in store.derivationResult.steps" :key="s.index" class="bg-slate-900 rounded p-2 border border-slate-700 flex gap-3">
+                    <span class="flex-shrink-0 w-5 h-5 rounded-full bg-slate-700 text-cyan-400 text-xs flex items-center justify-center font-bold">{{ s.index }}</span>
+                    <div class="text-xs space-y-0.5 min-w-0">
+                      <div>
+                        <span class="font-mono text-cyan-300 text-sm">{{ s.form }}</span>
+                        <span v-if="s.status === 'assumed'" class="ml-2 text-amber-400">假设形式</span>
+                      </div>
+                      <div class="text-slate-300">{{ s.rule }}</div>
+                      <div class="text-slate-500">依据：{{ s.basis }}</div>
+                      <div class="text-slate-500">条件：{{ s.condition }}</div>
+                      <div class="text-slate-500">例外：{{ s.exception }}</div>
+                    </div>
+                  </li>
+                </ol>
+              </div>
+            </div>
+            <div v-else class="text-xs text-slate-500 border border-dashed border-slate-700 rounded p-4 text-center">
+              选择规则并输入示例词后开始推演；未知音变、空输入或规则冲突将明确终止并说明原因
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -87,7 +172,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import * as d3 from 'd3'
-import { useEtymologyStore, LANGUAGE_FAMILIES } from './store/etymology'
+import { useEtymologyStore, LANGUAGE_FAMILIES, SOUND_CHANGE_RULES, VERIFIED_CONCLUSIONS } from './store/etymology'
 
 const store = useEtymologyStore()
 const svgRef = ref<SVGSVGElement | null>(null)
